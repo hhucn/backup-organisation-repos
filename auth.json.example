@@ -1,0 +1,10 @@
+{
+	"github": {
+		"user": "hhucnbackup",
+		"password": "__SECRET__"
+	},
+	"bitbucket": {
+                "user": "hhucnbackup",
+                "password": "__SECRET__"
+	}
+}
