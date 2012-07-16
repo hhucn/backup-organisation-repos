@@ -4,11 +4,16 @@ import argparse
 import base64
 import itertools
 import json
-import os.path
+import os
 import re
 import subprocess
 import sys
 import urllib.request
+
+try:
+    _SUBPROCESS_DEV_NULL = subprocess.DEVNULL
+except AttributeError:
+    _SUBPROCESS_DEV_NULL = open(os.devnull, 'wb')
 
 class BackupBitbucket(object):
     def __init__(self, authData):
@@ -43,6 +48,25 @@ class BackupGithub(object):
             repos.update(('git', r['git_url']) for r in self._request(u + '/repos'))
         return repos
 
+def clone_or_update(rtype, rurl, localBasePath, verbose=False):
+    saneName = re.sub(r'^file:///(.*?)/?$|(?:[a-z]+://)[a-z0-9.]*?([a-z]+)(?:\.com|\.org|)/', r'\1_', rurl).replace('/', '_').replace('.git', '')
+    localPath = os.path.join(localBasePath, os.path.basename(saneName))
+    if rtype == 'git':
+        cwd = None
+        stdout = sys.stdout.fileno() if verbose else _SUBPROCESS_DEV_NULL
+        stderr = stdout
+        if os.path.exists(localPath):
+            cmd = ['git', 'remote', 'update']
+            cwd = localPath
+        else:
+            cmd = ['git', 'clone', '--mirror', rurl, localPath]
+        if verbose:
+            print(saneName + '$ ' + subprocess.list2cmdline(cmd))
+            sys.stdout.flush()
+        subprocess.check_call(cmd, cwd=cwd, stdout=stdout, stderr=stderr)
+    else:
+        assert False
+    return localPath
 
 _SERVICES = [BackupBitbucket, BackupGithub]
 _SERVICES_MAP = {s.__name__.replace('Backup', '').lower() : s for s in _SERVICES}
@@ -60,20 +84,7 @@ def main():
         s = _SERVICES_MAP[svcname](ad)
         repos = s.getRepoUrls()
         for rtype,rurl in repos:
-            saneName = re.sub(r'^(?:[a-z]+://)[a-z0-9.]*?([a-z]+)(?:\.com|\.org|)/', r'\1_', rurl).replace('/', '_').replace('.git', '')
-            localPath = os.path.join(args.backup_dir, os.path.basename(saneName))
-            if rtype == 'git':
-                cwd = None
-                if os.path.exists(localPath):
-                    cmd = ['git', 'remote', 'update']
-                    cwd = localPath
-                else:
-                    cmd = ['git', 'clone', '--mirror', rurl, localPath]
-                print(saneName + '$ ' + subprocess.list2cmdline(cmd))
-                sys.stdout.flush()
-                subprocess.check_call(cmd, cwd=cwd, stderr=sys.stdout.fileno())
-            else:
-                assert False
+            clone_or_update(rtype, rurl, args.backup_dir, True)
 
 
 if __name__ == '__main__':
