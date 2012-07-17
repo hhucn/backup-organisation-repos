@@ -49,7 +49,7 @@ def _test_basic_dvcs(dvcs):
         shutil.rmtree(tmpDir)
 
 
-class TestBackup(unittest.TestCase):
+class Tests(unittest.TestCase):
     def test_git(self):
         """ Test cloning and updating git repositories """
         _test_basic_dvcs('git')
@@ -57,6 +57,26 @@ class TestBackup(unittest.TestCase):
     def test_mercurial(self):
         """ Test cloning and updating hg repositories """
         _test_basic_dvcs('hg')
+
+    def test_saneName(self):
+        sn = bu_orga_repos.saneName('http://github.com/user/repo.git')
+        assert 'http' not in sn
+        assert ':' not in sn
+        assert '.com' not in sn
+        assert '/' not in sn
+
+        sn = bu_orga_repos.saneName('https://github.com/user/repo.git')
+        assert 'http' not in sn
+        assert ':' not in sn
+        assert '.com' not in sn
+        assert '/' not in sn
+
+        sn = bu_orga_repos.saneName('file:///var/log/asd')
+        assert 'file' not in sn
+        assert ':' not in sn
+        assert 'var' in sn
+        assert '/' not in sn
+
 
 if __name__ == '__main__':
     unittest.main()

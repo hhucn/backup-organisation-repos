@@ -81,14 +81,18 @@ class BackupGithub(object):
             repos.update(('git', r['git_url']) for r in self._request(u + '/repos'))
         return repos
 
-
-def clone_or_update(rtype, rurl, localBasePath, verbose=False):
+def saneName(rurl):
     m = re.match(r'^(?:[a-z]+:///?)[a-z0-9.]*?(?P<domain>[a-z]+)(?:\.com|\.org|)/(?P<path>.*)$', rurl)
     if not m:
         raise ValueError('Invalid URL: ' + rurl)
-    saneName = (m.group('domain') + '_' + m.group('path')).replace('/', '_').replace('.git', '')
-    localPath = os.path.join(localBasePath, os.path.basename(saneName))
+    res = (m.group('domain') + '_' + m.group('path'))
+    res = re.sub(r'\.git$', '', res)
+    res = res.replace('/', '_')
+    return res
 
+def clone_or_update(rtype, rurl, localBasePath, verbose=False):
+    sn = saneName(rurl)
+    localPath = os.path.join(localBasePath, os.path.basename(sn))
     cwd = None
 
     if rtype == 'git':
@@ -107,7 +111,7 @@ def clone_or_update(rtype, rurl, localBasePath, verbose=False):
         assert False
 
     if verbose:
-        print(saneName + '$ ' + subprocess.list2cmdline(cmd))
+        print(sn + '$ ' + subprocess.list2cmdline(cmd))
         sys.stdout.flush()
     stdout = sys.stdout.fileno() if verbose else _SUBPROCESS_DEV_NULL
     stderr = stdout
@@ -123,20 +127,42 @@ def main():
     parser = argparse.ArgumentParser(description='Backup all the repositories of all members of all organizations.')
     parser.add_argument('-d', '--backup-dir', metavar='dir', help='Directory where the repositories should be written to', default='./repo-backups-data/')
     parser.add_argument('-a', '--auth-file', metavar='file', help='File to read authentication (= configuration) data from', default='./auth.json')
+    parser.add_argument('-t', '--test', help='Do not actually checkout or update anything, but test that everything will work', action='store_true')
+    parser.add_argument('-q', '--quiet', help='Silence output except for errors', action='store_true')
+    parser.add_argument('--list', help='Do not actually checkout or update anything, but list all repositories as JSON (implies -q)', action='store_true')
     args = parser.parse_args()
+
+    if args.list:
+        args.quiet = True
 
     with open(args.auth_file) as authf:
         authData = json.load(authf)
 
+    if args.test:
+        if not os.access(args.backupdir, os.W_OK):
+            raise OSError('Backup directory is not writable!')
+
     for svcname, ad in authData.items():
         s = _SERVICES_MAP[svcname](ad)
-        print('Assembling ' + svcname + ' repository information ...', end='')
-        sys.stdout.flush()
+
+        if not args.quiet:
+            sys.stdout.write('Assembling ' + svcname + ' repository information ...')
+            sys.stdout.flush()
         repos = s.getRepoUrls()
-        print(' .')
-        sys.stdout.flush()
-        for rtype, rurl in repos:
-            clone_or_update(rtype, rurl, args.backup_dir, True)
+        if not args.quiet:
+            sys.stdout.write(' .\n')
+            sys.stdout.flush()
+
+        if args.list:
+            srepos = sorted(list(repos), key=lambda r: (r[1],r[0]))
+            repoList = [{'rtype': rtype, 'url': rurl} for rtype, rurl in srepos]
+            json.dump(repoList, sys.stdout, indent=4)
+        else:
+            for rtype, rurl in repos:
+                if args.test:
+                    subprocess.check_call([rtype, '--version'], stdout=_SUBPROCESS_DEV_NULL, stderr=_SUBPROCESS_DEV_NULL)
+                else:
+                    clone_or_update(rtype, rurl, args.backup_dir, not args.quiet)
 
 
 if __name__ == '__main__':
