@@ -122,6 +122,19 @@ def clone_or_update(rtype, rurl, localBasePath, verbose=False):
 _SERVICES = [BackupBitbucket, BackupGithub]
 _SERVICES_MAP = {s.__name__.replace('Backup', '').lower(): s for s in _SERVICES}
 
+def get_all_repos(authData, quiet):
+    repos = []
+    for svcname, ad in authData.items():
+        s = _SERVICES_MAP[svcname](ad)
+
+        if not quiet:
+            sys.stdout.write('Assembling ' + svcname + ' repository information ...')
+            sys.stdout.flush()
+        repos += s.getRepoUrls()
+        if not quiet:
+            sys.stdout.write(' .\n')
+            sys.stdout.flush()
+    return repos
 
 def main():
     parser = optparse.OptionParser(description='Backup all the repositories of all members of all organizations.')
@@ -141,31 +154,38 @@ def main():
     with open(args.auth_file) as authf:
         authData = json.load(authf)
 
+    if not args.list:
+        if not os.path.isdir(args.backup_dir):
+            try:
+                os.mkdir(args.backup_dir)
+            except OSError:
+                if args.test:
+                    print('Cannot create backup directory ' + os.path.abspath(args.backup_dir))
+                    sys.exit(1)
+                else:
+                    raise
+
+    repos = get_all_repos(authData, args.quiet)
+
     if args.test:
         if not os.access(args.backup_dir, os.W_OK):
             raise OSError('Backup directory is not writable!')
 
-    for svcname, ad in authData.items():
-        s = _SERVICES_MAP[svcname](ad)
+    if args.list:
+        srepos = sorted(list(repos), key=lambda r: (r[1],r[0]))
+        repoList = [{'rtype': rtype, 'url': rurl} for rtype, rurl in srepos]
+        json.dump(repoList, sys.stdout, indent=4)
+        sys.stdout.write('\n')
+        return
 
-        if not args.quiet:
-            sys.stdout.write('Assembling ' + svcname + ' repository information ...')
-            sys.stdout.flush()
-        repos = s.getRepoUrls()
-        if not args.quiet:
-            sys.stdout.write(' .\n')
-            sys.stdout.flush()
+    if args.test:
+        for rtype, rurl in repos:
+            subprocess.check_call([rtype, '--version'], stdout=_SUBPROCESS_DEV_NULL, stderr=_SUBPROCESS_DEV_NULL)
+        return
 
-        if args.list:
-            srepos = sorted(list(repos), key=lambda r: (r[1],r[0]))
-            repoList = [{'rtype': rtype, 'url': rurl} for rtype, rurl in srepos]
-            json.dump(repoList, sys.stdout, indent=4)
-        else:
-            for rtype, rurl in repos:
-                if args.test:
-                    subprocess.check_call([rtype, '--version'], stdout=_SUBPROCESS_DEV_NULL, stderr=_SUBPROCESS_DEV_NULL)
-                else:
-                    clone_or_update(rtype, rurl, args.backup_dir, not args.quiet)
+    # Actually checkout
+    for rtype, rurl in repos:
+        clone_or_update(rtype, rurl, args.backup_dir, not args.quiet)
 
 
 if __name__ == '__main__':
