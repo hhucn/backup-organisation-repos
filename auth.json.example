@@ -1,10 +1,15 @@
 {
-	"github": {
-		"user": "hhucnbackup",
-		"password": "__SECRET__"
-	},
-	"bitbucket": {
-                "user": "hhucnbackup",
-                "password": "__SECRET__"
-	}
+    "github": {
+        "user": "hhucnbackup",
+        "password": "__SECRET__"
+    },
+    "bitbucket": {
+        "user": "hhucnbackup",
+        "password": "__SECRET__",
+        "orgs": ["hhucn"]
+    },
+    "raw": {
+        "rtype": "git",
+        "url": "git://github.com/hhucn/backup-organisation-repos.git"
+    }
 }
