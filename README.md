@@ -1,9 +1,11 @@
 Installation
 ============
 
-Apart from Python 3, the backup script requires git (`git-core` in debian) and hg(`mercurial` in debian) to be installed. Check it out
+Apart from Python 3 (3.2+ recommended), the backup script requires git and hg to be installed. On debian/Ubuntu, run:
 
-Checkout the script with
+    sudo apt-get install python3 git-core mercurial
+
+Check out the script with:
 
     git clone git://github.com/hhucn/backup-organisation-repos.git
 
