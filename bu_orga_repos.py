@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-import argparse
 import base64
 import itertools
 import json
+import optparse
 import os
 import re
 import subprocess
@@ -124,13 +124,16 @@ _SERVICES_MAP = {s.__name__.replace('Backup', '').lower(): s for s in _SERVICES}
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Backup all the repositories of all members of all organizations.')
-    parser.add_argument('-d', '--backup-dir', metavar='dir', help='Directory where the repositories should be written to', default='./repo-backups-data/')
-    parser.add_argument('-a', '--auth-file', metavar='file', help='File to read authentication (= configuration) data from', default='./auth.json')
-    parser.add_argument('-t', '--test', help='Do not actually checkout or update anything, but test that everything will work', action='store_true')
-    parser.add_argument('-q', '--quiet', help='Silence output except for errors', action='store_true')
-    parser.add_argument('--list', help='Do not actually checkout or update anything, but list all repositories as JSON (implies -q)', action='store_true')
-    args = parser.parse_args()
+    parser = optparse.OptionParser(description='Backup all the repositories of all members of all organizations.')
+    parser.add_option('-d', '--backup-dir', metavar='dir', help='Directory where the repositories should be written to', default='./repo-backups-data/')
+    parser.add_option('-a', '--auth-file', metavar='file', help='File to read authentication (= configuration) data from', default='./auth.json')
+    parser.add_option('-t', '--test', help='Do not actually checkout or update anything, but test that everything will work', action='store_true')
+    parser.add_option('-q', '--quiet', help='Silence output except for errors', action='store_true')
+    parser.add_option('--list', help='Do not actually checkout or update anything, but list all repositories as JSON (implies -q)', action='store_true')
+    args,params = parser.parse_args()
+
+    if params:
+        parser.error('Not expecting any parameters. Use options.')
 
     if args.list:
         args.quiet = True
@@ -139,7 +142,7 @@ def main():
         authData = json.load(authf)
 
     if args.test:
-        if not os.access(args.backupdir, os.W_OK):
+        if not os.access(args.backup_dir, os.W_OK):
             raise OSError('Backup directory is not writable!')
 
     for svcname, ad in authData.items():
