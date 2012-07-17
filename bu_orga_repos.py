@@ -15,6 +15,7 @@ try:
 except AttributeError:
     _SUBPROCESS_DEV_NULL = open(os.devnull, 'wb')
 
+
 class _CommonBackup(object):
     def __init__(self, authData):
         self._authData = authData
@@ -76,6 +77,7 @@ class BackupGithub(_CommonBackup):
             repos.update(('git', r['git_url']) for r in self._request(u + '/repos'))
         return repos
 
+
 class BackupRaw(_CommonBackup):
     def getRepoUrls(self):
         return ((r['scm'], r['url']) for r in self._authData['repositories'])
@@ -83,8 +85,10 @@ class BackupRaw(_CommonBackup):
     def getUsers(self):
         return []
 
+
 _SERVICES = [BackupBitbucket, BackupGithub, BackupRaw]
 _SERVICES_MAP = {s.__name__.replace('Backup', '').lower(): s for s in _SERVICES}
+
 
 def saneName(rurl):
     m = re.match(r'^(?:[a-z]+:///?)[a-z0-9.]*?(?P<domain>[a-z]+)(?:\.com|\.org|)/(?P<path>.*)$', rurl)
@@ -94,6 +98,7 @@ def saneName(rurl):
     res = re.sub(r'\.git$', '', res)
     res = res.replace('/', '_')
     return res
+
 
 def clone_or_update(rtype, rurl, localBasePath, verbose=False):
     sn = saneName(rurl)
@@ -124,9 +129,10 @@ def clone_or_update(rtype, rurl, localBasePath, verbose=False):
 
     return localPath
 
+
 def get_all_users(authData):
     users = []
-    for svcname,ad in authData.items():
+    for svcname, ad in authData.items():
         uids = _SERVICES_MAP[svcname](ad).getUsers()
         assert uids
         for uid in sorted(uids):
@@ -136,6 +142,7 @@ def get_all_users(authData):
             })
 
     return users
+
 
 def get_all_repos(authData, quiet):
     repos = set()
@@ -151,6 +158,7 @@ def get_all_repos(authData, quiet):
             sys.stdout.flush()
     return repos
 
+
 def main():
     parser = optparse.OptionParser(description='Backup all the repositories of all members of all organizations.')
     parser.add_option('-d', '--backup-dir', metavar='dir', help='Directory where the repositories should be written to', default='./repo-backups-data/')
@@ -159,7 +167,7 @@ def main():
     parser.add_option('-q', '--quiet', help='Silence output except for errors', action='store_true')
     parser.add_option('--list-repos', help='Do not actually checkout or update anything, but list all repositories as JSON (implies -q)', action='store_true')
     parser.add_option('--list-users', help='Do not actually checkout or update anything, but list all user identifiers as JSON (implies -q)', action='store_true')
-    args,params = parser.parse_args()
+    args, params = parser.parse_args()
 
     if params:
         parser.error('Not expecting any parameters. Use options.')
@@ -196,7 +204,7 @@ def main():
             raise OSError('Backup directory is not writable!')
 
     if args.list_repos:
-        srepos = sorted(list(repos), key=lambda r: (r[1],r[0]))
+        srepos = sorted(list(repos), key=lambda r: (r[1], r[0]))
         repoList = [{'scm': rtype, 'url': rurl} for rtype, rurl in srepos]
         json.dump(repoList, sys.stdout, indent=4)
         sys.stdout.write('\n')
