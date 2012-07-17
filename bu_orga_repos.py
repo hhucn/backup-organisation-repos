@@ -65,7 +65,7 @@ class BackupGithub(_CommonBackup):
         assert orgs
 
         users = set(orgs)
-        users.add(self._authData['user'])
+        users.add('https://api.github.com/users/' + self._authData['user'])
         for o in orgs:
             users.update(u['url'] for u in self._request(o + '/members'))
 
