@@ -15,8 +15,7 @@ try:
 except AttributeError:
     _SUBPROCESS_DEV_NULL = open(os.devnull, 'wb')
 
-
-class BackupBitbucket(object):
+class _CommonBackup(object):
     def __init__(self, authData):
         self._authData = authData
 
@@ -30,17 +29,22 @@ class BackupBitbucket(object):
             gh_res = uf.read()
         return json.loads(gh_res.decode('utf-8'))
 
-    def getRepoUrls(self):
+
+class BackupBitbucket(_CommonBackup):
+    def getUsers(self):
         orgs = self._authData['orgs']
 
         users = set(orgs)
+        users.add(self._authData['user'])
         for o in orgs:
             groups = self._request('https://api.bitbucket.org/1.0/groups/' + o + '/')
             for g in groups:
                 users.update(u['username'] for u in g['members'])
+        return users
 
+    def getRepoUrls(self):
         repos = set()
-        for u in users:
+        for u in self.getUsers():
             for r in self._request('https://api.bitbucket.org/1.0/users/' + u + '/')['repositories']:
                 if r['scm'] == 'git':
                     rurl = 'https://bitbucket.org/' + u + '/' + r['slug'] + '.git'
@@ -54,32 +58,33 @@ class BackupBitbucket(object):
         return repos
 
 
-class BackupGithub(object):
-    def __init__(self, authData):
-        self._authData = authData
-
-    def _request(self, url):
-        req = urllib.request.Request(url)
-        authStr = self._authData['user'] + ':' + self._authData['password']
-        authb64 = base64.b64encode(authStr.encode('utf-8'))
-        req.add_header('Authorization', 'Basic ' + authb64.decode('utf-8'))
-        req.add_header('User-Agent', 'bu_orga_repos <hagemeister@cs.uni-duesseldorf.de>')
-        with urllib.request.urlopen(req) as uf:
-            gh_res = uf.read()
-        return json.loads(gh_res.decode('utf-8'))
-
-    def getRepoUrls(self):
+class BackupGithub(_CommonBackup):
+    def getUsers(self):
         orgs = [o['url'] for o in self._request('https://api.github.com/user/orgs')]
         assert orgs
 
         users = set(orgs)
+        users.add(self._authData['user'])
         for o in orgs:
             users.update(u['url'] for u in self._request(o + '/members'))
 
+        return users
+
+    def getRepoUrls(self):
         repos = set()
-        for u in users:
+        for u in self.getUsers():
             repos.update(('git', r['git_url']) for r in self._request(u + '/repos'))
         return repos
+
+class BackupRaw(_CommonBackup):
+    def getRepoUrls(self):
+        return ((r['scm'], r['url']) for r in self._authData['repositories'])
+
+    def getUsers(self):
+        return []
+
+_SERVICES = [BackupBitbucket, BackupGithub, BackupRaw]
+_SERVICES_MAP = {s.__name__.replace('Backup', '').lower(): s for s in _SERVICES}
 
 def saneName(rurl):
     m = re.match(r'^(?:[a-z]+:///?)[a-z0-9.]*?(?P<domain>[a-z]+)(?:\.com|\.org|)/(?P<path>.*)$', rurl)
@@ -119,18 +124,28 @@ def clone_or_update(rtype, rurl, localBasePath, verbose=False):
 
     return localPath
 
-_SERVICES = [BackupBitbucket, BackupGithub]
-_SERVICES_MAP = {s.__name__.replace('Backup', '').lower(): s for s in _SERVICES}
+def get_all_users(authData):
+    users = []
+    for svcname,ad in authData.items():
+        uids = _SERVICES_MAP[svcname](ad).getUsers()
+        assert uids
+        for uid in sorted(uids):
+            users.append({
+                "service": svcname,
+                "id": uid
+            })
+
+    return users
 
 def get_all_repos(authData, quiet):
-    repos = []
+    repos = set()
     for svcname, ad in authData.items():
         s = _SERVICES_MAP[svcname](ad)
 
         if not quiet:
             sys.stdout.write('Assembling ' + svcname + ' repository information ...')
             sys.stdout.flush()
-        repos += s.getRepoUrls()
+        repos.update(s.getRepoUrls())
         if not quiet:
             sys.stdout.write(' .\n')
             sys.stdout.flush()
@@ -142,19 +157,28 @@ def main():
     parser.add_option('-a', '--auth-file', metavar='file', help='File to read authentication (= configuration) data from', default='./auth.json')
     parser.add_option('-t', '--test', help='Do not actually checkout or update anything, but test that everything will work', action='store_true')
     parser.add_option('-q', '--quiet', help='Silence output except for errors', action='store_true')
-    parser.add_option('--list', help='Do not actually checkout or update anything, but list all repositories as JSON (implies -q)', action='store_true')
+    parser.add_option('--list-repos', help='Do not actually checkout or update anything, but list all repositories as JSON (implies -q)', action='store_true')
+    parser.add_option('--list-users', help='Do not actually checkout or update anything, but list all user identifiers as JSON (implies -q)', action='store_true')
     args,params = parser.parse_args()
 
     if params:
         parser.error('Not expecting any parameters. Use options.')
 
-    if args.list:
+    if args.list_repos and args.list_users:
+        parser.error('Cannot combine --list and --list-users!')
+
+    if args.list_repos or args.list_users:
         args.quiet = True
 
     with open(args.auth_file) as authf:
         authData = json.load(authf)
 
-    if not args.list:
+    if args.list_users:
+        json.dump(get_all_users(authData), sys.stdout, indent=4)
+        sys.stdout.write('\n')
+        return
+
+    if not args.list_repos:
         if not os.path.isdir(args.backup_dir):
             try:
                 os.mkdir(args.backup_dir)
@@ -171,9 +195,9 @@ def main():
         if not os.access(args.backup_dir, os.W_OK):
             raise OSError('Backup directory is not writable!')
 
-    if args.list:
+    if args.list_repos:
         srepos = sorted(list(repos), key=lambda r: (r[1],r[0]))
-        repoList = [{'rtype': rtype, 'url': rurl} for rtype, rurl in srepos]
+        repoList = [{'scm': rtype, 'url': rurl} for rtype, rurl in srepos]
         json.dump(repoList, sys.stdout, indent=4)
         sys.stdout.write('\n')
         return

@@ -9,7 +9,11 @@
         "orgs": ["hhucn"]
     },
     "raw": {
-        "rtype": "git",
-        "url": "git://github.com/hhucn/backup-organisation-repos.git"
+        "repositories": [
+            {
+                "scm": "git",
+                "url": "git://github.com/hhucn/backup-organisation-repos.git"
+            }
+        ]
     }
 }
